@@ -1,16 +1,16 @@
 {
   "version": 2,
   "builds": [
-    { "src": "server/server.js", "use": "@vercel/node" },
     {
-      "src": "client/vite.config.js",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "client/dist" }
+      "src": "server/server.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "server/server.js" },
-    { "src": "/(.*)", "dest": "/client/dist/index.html" }
+    {
+      "src": "/(.*)",
+      "dest": "server/server.js"
+    }
   ],
-  "buildCommand": "npm install --prefix server && npm install --prefix client && npm run build --prefix client"
+  "buildCommand": "npm install --prefix server"
 }
