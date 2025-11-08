@@ -1,27 +1,19 @@
 {
-  "name": "college-merit-demerit-system-server",
+  "name": "vercel-backend",
   "version": "1.0.0",
-  "type": "module",
   "main": "server.js",
+  "type": "module",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js",
-    "seed": "node seed.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
-    "csv-writer": "^1.6.0",
-    "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "mongoose": "^7.8.0",
+    "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.6.0",
-    "morgan": "^1.10.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.7"
+    "morgan": "^1.10.0",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.4.5"
   }
 }
-
-
