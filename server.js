@@ -20,9 +20,8 @@ app.use(cookieParser());
 app.use(morgan('dev'));
 
 const PORT = process.env.PORT || 5000;
-
-// ✅ DIRECT MongoDB connection using your URL
 const MONGODB_URI =
+  process.env.MONGODB_URI ||
   'mongodb+srv://athil:asdfghjkl@fest.spwf7vr.mongodb.net/?retryWrites=true&w=majority&appName=Fest';
 
 async function connectDb() {
@@ -39,7 +38,9 @@ async function connectDb() {
 
 connectDb();
 
-// ================= AUTH LOGIN =================
+/* ======================================================
+   AUTH LOGIN
+====================================================== */
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password, role, studentId } = req.body;
@@ -49,18 +50,19 @@ app.post('/api/auth/login', async (req, res) => {
       if (!admin) return res.status(401).json({ message: 'Invalid credentials' });
       const ok = await bcrypt.compare(password, admin.password);
       if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+
       const token = jwt.sign({ id: admin._id, role: 'admin' }, process.env.JWT_SECRET, {
         expiresIn: '7d',
       });
       return res.json({ token, role: 'admin' });
     }
 
-    // Student login by rollNumber or _id
     const query = studentId ? { _id: studentId } : { rollNumber: username };
     const student = await Student.findOne(query);
     if (!student) return res.status(401).json({ message: 'Invalid credentials' });
     const ok = await bcrypt.compare(password, student.password);
     if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+
     const token = jwt.sign({ id: student._id, role: 'student' }, process.env.JWT_SECRET, {
       expiresIn: '7d',
     });
@@ -70,7 +72,9 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ================= ADMIN: ADD STUDENT =================
+/* ======================================================
+   ADMIN - ADD STUDENT
+====================================================== */
 app.post('/api/admin/add-student', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, rollNumber, department, batch, password } = req.body;
@@ -88,27 +92,31 @@ app.post('/api/admin/add-student', requireAuth, requireAdmin, async (req, res) =
   }
 });
 
-// ================= ADMIN: ASSIGN POINTS =================
+/* ======================================================
+   ADMIN - ASSIGN POINTS
+====================================================== */
 app.post('/api/admin/assign-points', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { studentId, rollNumber, type, points, reason } = req.body;
     const numericPoints = Number(points);
-    if (!Number.isFinite(numericPoints) || numericPoints <= 0) {
-      return res.status(400).json({ message: 'Points must be a positive number' });
-    }
+    if (!Number.isFinite(numericPoints) || numericPoints <= 0)
+      return res.status(400).json({ message: 'Points must be positive' });
+
     let student = null;
     if (studentId) student = await Student.findById(studentId.trim());
     if (!student && rollNumber) student = await Student.findOne({ rollNumber: rollNumber.trim() });
     if (!student) return res.status(404).json({ message: 'Student not found' });
+
     student.activities.push({
       activityId: new mongoose.Types.ObjectId(),
       type,
       points: numericPoints,
       reason,
-      date: new Date()
+      date: new Date(),
     });
     if (type === 'merit') student.totalMerit += numericPoints;
     else student.totalDemerit += numericPoints;
+
     await student.save();
     return res.json(student);
   } catch (err) {
@@ -116,13 +124,15 @@ app.post('/api/admin/assign-points', requireAuth, requireAdmin, async (req, res)
   }
 });
 
-// ================= GET STUDENT =================
+/* ======================================================
+   GET STUDENT DETAILS
+====================================================== */
 app.get('/api/students/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    if (req.user.role !== 'admin' && req.user.id !== id) {
+    if (req.user.role !== 'admin' && req.user.id !== id)
       return res.status(403).json({ message: 'Forbidden' });
-    }
+
     const student = await Student.findById(id);
     if (!student) return res.status(404).json({ message: 'Student not found' });
     return res.json(student);
@@ -131,7 +141,9 @@ app.get('/api/students/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ================= LEADERBOARD =================
+/* ======================================================
+   LEADERBOARD
+====================================================== */
 app.get('/api/admin/leaderboard', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { department, batch, q } = req.query;
@@ -143,23 +155,26 @@ app.get('/api/admin/leaderboard', requireAuth, requireAdmin, async (req, res) =>
         { name: { $regex: q, $options: 'i' } },
         { rollNumber: { $regex: q, $options: 'i' } },
       ];
+
     const students = await Student.find(filter).lean();
     const withScore = students.map((s) => ({
       ...s,
       finalScore: (s.totalMerit || 0) - (s.totalDemerit || 0),
     }));
     withScore.sort((a, b) => b.finalScore - a.finalScore);
+
     return res.json(withScore);
   } catch (err) {
     return res.status(400).json({ message: 'Could not fetch leaderboard' });
   }
 });
 
-// ================= DELETE STUDENT =================
+/* ======================================================
+   DELETE STUDENT / ACTIVITY
+====================================================== */
 app.delete('/api/admin/students/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
-    const deleted = await Student.findByIdAndDelete(id);
+    const deleted = await Student.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ message: 'Student not found' });
     return res.json({ ok: true });
   } catch (err) {
@@ -167,47 +182,34 @@ app.delete('/api/admin/students/:id', requireAuth, requireAdmin, async (req, res
   }
 });
 
-// ================= DELETE STUDENT ACTIVITY =================
-app.delete(
-  '/api/admin/students/:id/activities/:activityId',
-  requireAuth,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const { id, activityId } = req.params;
-      const { index } = req.query;
-      const student = await Student.findById(id);
-      if (!student) return res.status(404).json({ message: 'Student not found' });
+app.delete('/api/admin/students/:id/activities/:activityId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id, activityId } = req.params;
+    const student = await Student.findById(id);
+    if (!student) return res.status(404).json({ message: 'Student not found' });
 
-      let activityIndex = student.activities.findIndex((act) => {
-        const actId = act.activityId?.toString() || act._id?.toString();
-        return actId === activityId;
-      });
+    const index = student.activities.findIndex(
+      (a) => a.activityId?.toString() === activityId || a._id?.toString() === activityId
+    );
+    if (index === -1) return res.status(404).json({ message: 'Activity not found' });
 
-      if (activityIndex === -1 && index !== undefined) {
-        const numericIndex = Number(index);
-        if (!Number.isNaN(numericIndex)) activityIndex = numericIndex;
-      }
+    const [removed] = student.activities.splice(index, 1);
+    if (removed.type === 'merit') student.totalMerit -= removed.points;
+    if (removed.type === 'demerit') student.totalDemerit -= removed.points;
 
-      if (activityIndex < 0 || activityIndex >= student.activities.length) {
-        return res.status(404).json({ message: 'Activity not found' });
-      }
+    if (student.totalMerit < 0) student.totalMerit = 0;
+    if (student.totalDemerit < 0) student.totalDemerit = 0;
 
-      const [removed] = student.activities.splice(activityIndex, 1);
-      if (removed?.type === 'merit') student.totalMerit -= removed.points;
-      if (removed?.type === 'demerit') student.totalDemerit -= removed.points;
-      if (student.totalMerit < 0) student.totalMerit = 0;
-      if (student.totalDemerit < 0) student.totalDemerit = 0;
-
-      await student.save();
-      return res.json(student);
-    } catch (err) {
-      return res.status(400).json({ message: 'Could not delete activity' });
-    }
+    await student.save();
+    return res.json(student);
+  } catch (err) {
+    return res.status(400).json({ message: 'Could not delete activity' });
   }
-);
+});
 
-// ================= EXPORT CSV =================
+/* ======================================================
+   EXPORT CSV
+====================================================== */
 app.get('/api/admin/export/csv', requireAuth, requireAdmin, async (req, res) => {
   try {
     const students = await Student.find({}).lean();
@@ -221,12 +223,7 @@ app.get('/api/admin/export/csv', requireAuth, requireAdmin, async (req, res) => 
       finalScore: (s.totalMerit || 0) - (s.totalDemerit || 0),
     }));
     const header = 'name,rollNumber,department,batch,totalMerit,totalDemerit,finalScore\n';
-    const body = rows
-      .map((r) =>
-        [r.name, r.rollNumber, r.department, r.batch, r.totalMerit, r.totalDemerit, r.finalScore].join(',')
-      )
-      .join('\n');
-    const csv = header + body + '\n';
+    const csv = header + rows.map((r) => Object.values(r).join(',')).join('\n') + '\n';
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="report.csv"');
     return res.send(csv);
@@ -235,8 +232,9 @@ app.get('/api/admin/export/csv', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+/* ======================================================
+   HEALTH CHECK
+====================================================== */
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
